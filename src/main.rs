@@ -13,6 +13,8 @@ use std::{
     thread::{self, Thread},
 };
 
+mod spinlock;
+
 fn main() {
     let num_done = AtomicU64::new(0);
     let main_thread = thread::current();
