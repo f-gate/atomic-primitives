@@ -1,5 +1,5 @@
 
-use std::{sync::atomic::{*, Ordering::*}, cell::UnsafeCell, ops::DerefMut};
+use std::{sync::atomic::{*, Ordering::*}, cell::UnsafeCell, ops::DerefMut, thread, vec};
 use std::ops::Deref;
 
 pub struct Guard<'a ,T> {
@@ -32,7 +32,6 @@ impl<T> Drop for Guard<'_, T> {
     }
 }
 
-
 /// Used to protect data when multiple threads are concurrently accessing.
 pub struct SpinLock<T> {
     locked: AtomicBool,
@@ -59,10 +58,30 @@ impl<T> SpinLock<T> {
         Guard {
             lock: &self
         }
-        
     }
 
     fn unlock(&self) {
         self.locked.store(false, Release)
     }
+}
+
+#[test]
+fn it_works() {
+    let lock: SpinLock<Vec<u64>> = SpinLock::new(Vec::new());
+    thread::scope(|s| {
+        s.spawn(|| {
+            // Lock and aquire the guard
+            // We can simply push the guard as we have implemented DerefMut (COOL)
+            lock.lock().push(1u64);
+            // Drop the guard and release the lock (done implicitly)
+        });
+        s.spawn(|| {
+            // This can be dome condurrenclty
+            let mut g = lock.lock();
+            g.push(2u64);
+        });
+    });
+    let g = lock.lock();
+    assert!(g.as_slice() == [1, 2] || g.as_slice() == [2, 1]);
+    drop(g);
 }
