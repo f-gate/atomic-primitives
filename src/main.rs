@@ -14,6 +14,7 @@ use std::{
 };
 
 mod spinlock;
+mod arc;
 
 fn main() {
     let num_done = AtomicU64::new(0);
