@@ -41,6 +41,23 @@ impl<T> Arc<T> {
     fn data(&self) -> &ArcData<T> {
         unsafe { &self.ptr.as_ref()}
     }
+
+    /// Get a mutable reference to the arc provided.
+    /// This will return a reference when there is only one reference counted.
+    /// exclusive ownership is ensured implicitly as &mut is passed in.
+    fn get_mut(arc: &mut Self) -> Option<&mut T> {
+        if arc.data().counter.load(Relaxed) == 1 {
+            // There is only one reference so establish ownership and happens before relationship.
+            fence(Acquire);
+
+            Some( unsafe {
+                &mut arc.ptr.as_mut().data    
+            })
+            
+        } else {
+            None
+        }
+    }
 }
 
 impl<T> Deref for Arc<T> {
