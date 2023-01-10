@@ -44,5 +44,5 @@ fn main() {
 
 
 fn do_something() {
-    thread::sleep(Duration::from_millis(50))
+    thread::sleep(Duration::from_millis(1))
 }

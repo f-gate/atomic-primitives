@@ -1,6 +1,6 @@
 
 use core::panic;
-use std::{mem::MaybeUninit, sync::atomic::{AtomicBool, Ordering::*}, cell::UnsafeCell, fmt::write};
+use std::{mem::MaybeUninit, sync::atomic::{AtomicBool, Ordering::*}, cell::UnsafeCell, fmt::write, thread::Thread};
 
 
 unsafe impl<T: Send> Send for OneShotChannel<T> {}
@@ -11,7 +11,16 @@ struct OneShotChannel<T> {
     message: UnsafeCell<MaybeUninit<T>>,
 }
 
+struct Sender<'a, T> {
+    channel: &'a OneShotChannel<T>,
+}
+
+struct Reciever<'a, T> {
+    channel: &'a OneShotChannel<T>
+}
+
 impl<T> OneShotChannel<T> {
+    /// Create a new one shot channel.
     fn new() -> Self {
         Self {
             is_ready: AtomicBool::new(false),
@@ -20,29 +29,48 @@ impl<T> OneShotChannel<T> {
         }
     }
 
-    fn send(&self, message: T) {
-        if self.in_use.swap(true, Relaxed) {
-            panic!("Already in use!");
-        }
-            unsafe {
-                (*self.message.get()).write(message);
-                self.is_ready.store(true, Release);
+    /// Split the channer into type safe instances that only allow for a single message
+    /// to be sent and recieved.
+    fn split(&mut self) -> (Sender<T>, Reciever<T>) {
+        // reset the channel so that the message can be loaded.
+        *self = Self::new();
+        (
+            Sender{
+                channel: self
+            },
+            Reciever {
+                channel: self
             }
-    }
+        )
 
-    fn recieve(&self) -> T {
-        if !self.is_ready.swap(false, Acquire) {
-            panic!("Message is not ready yet.")
-        }
-        // We have checked and reset the ready flag so is safe.
-        unsafe {
-                (*self.message.get()).assume_init_read()
-            }
-    }
+    } 
 
     /// Acquire load is_ready.
     fn is_ready(&self) -> bool {
         self.is_ready.load(Relaxed)
+    }
+}
+
+impl<'a, T> Reciever<'a, T> {
+    fn recieve(self) -> T {
+        if !self.channel.is_ready.swap(false, Acquire) {
+            panic!("Message is not ready yet.")
+        }
+        // We have checked and reset the ready flag so is safe.
+        // Is consumed so will be called twice.
+        unsafe {
+                (*self.channel.message.get()).assume_init_read()
+            }
+    }
+}
+
+impl<'a, T> Sender<'a, T> {
+    fn send(self, message: T) {
+        // Is consumed on call so cannot be called twice.
+        unsafe {
+            (*self.channel.message.get()).write(message);
+            self.channel.is_ready.store(true, Release);
+        }
     }
 }
 
